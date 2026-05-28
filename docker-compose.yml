@@ -1,0 +1,69 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: trading-bot
+    restart: unless-stopped
+    environment:
+      # ⚠️ ใส่ API Key ใน .env file เท่านั้น ไม่ commit ขึ้น Git
+      - BINANCE_API_KEY=${BINANCE_API_KEY}
+      - BINANCE_API_SECRET=${BINANCE_API_SECRET}
+      - BINANCE_TESTNET=${BINANCE_TESTNET:-true}
+      # Trading config
+      - SYMBOL=${SYMBOL:-BTCUSDT}
+      - INTERVAL=${INTERVAL:-15m}
+      - LEVERAGE=${LEVERAGE:-5}
+      - RISK_PCT=${RISK_PCT:-1.0}
+    volumes:
+      - bot_data:/app/data
+      - bot_logs:/app/logs
+    networks:
+      - trading-net
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.dashboard
+    container_name: trading-dashboard
+    restart: unless-stopped
+    environment:
+      - DASHBOARD_PORT=8080
+    ports:
+      - "8080:8080"
+    volumes:
+      - bot_data:/app/data  # Shared volume with bot
+    networks:
+      - trading-net
+    depends_on:
+      - bot
+
+  # Optional: run backtest manually
+  backtest:
+    build:
+      context: .
+      dockerfile: Dockerfile.bot
+    container_name: trading-backtest
+    profiles: ["backtest"]  # Only runs when explicitly called
+    environment:
+      - BINANCE_TESTNET=true
+    volumes:
+      - bot_data:/app/data
+    command: >
+      python backtesting/backtest.py
+      --symbol ${SYMBOL:-BTCUSDT}
+      --interval ${INTERVAL:-15m}
+      --days ${BACKTEST_DAYS:-90}
+      --balance ${BACKTEST_BALANCE:-1000}
+      --risk ${RISK_PCT:-1.0}
+      --leverage ${LEVERAGE:-5}
+    networks:
+      - trading-net
+
+volumes:
+  bot_data:
+  bot_logs:
+
+networks:
+  trading-net:
+    driver: bridge
